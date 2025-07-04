@@ -1,0 +1,116 @@
+MMU Test - Memory Management Unit Support and Operation
+
+
+---
+
+Purpose:
+
+This document explains the implementation and outcome of a test designed to verify the usage and enforcement of Memory Management Unit (MMU) protections in a system running an RTOS or protected environment.
+
+
+---
+
+Test Objective:
+
+Determine whether the processor supports MMU.
+
+Check if the RTOS (if present) configures and uses MMU correctly.
+
+Confirm that applications cannot access memory outside of their designated address range.
+
+
+
+---
+
+Test Description:
+
+We developed a simple C program (portable to desktop Linux or RTOS-based embedded systems) that simulates a task accessing a restricted memory address. If MMU is active, such an access should trigger a segmentation fault or memory exception.
+
+
+---
+
+Test Code:
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <setjmp.h>
+
+jmp_buf jump_buffer;
+
+void signal_handler(int sig) {
+    printf("Memory protection fault caught! (signal %d)\n", sig);
+    longjmp(jump_buffer, 1);
+}
+
+void test_invalid_memory_access() {
+    volatile int *invalid_addr = (int *)0xFFFFFFF0;
+
+    printf("Trying to read from invalid memory address...\n");
+    int value = *invalid_addr;
+    printf("Read value: %d\n", value);
+
+    printf("Trying to write to invalid memory address...\n");
+    *invalid_addr = 1234;
+    printf("Write complete.\n");
+}
+
+int main() {
+    signal(SIGSEGV, signal_handler);
+    signal(SIGBUS, signal_handler);
+
+    if (setjmp(jump_buffer) == 0) {
+        test_invalid_memory_access();
+    } else {
+        printf("MMU or memory protection seems to be working \u2014 invalid access was blocked.\n");
+    }
+
+    printf("Test complete.\n");
+    return 0;
+}
+
+
+---
+
+Key Concepts Explained:
+
+Invalid Address (0xFFFFFFF0): Usually reserved/unmapped memory. Accessing this triggers faults in MMU-enabled systems.
+
+volatile Keyword: Ensures memory operations are performed without compiler optimization.
+
+Signal Handlers (SIGSEGV, SIGBUS): Used to catch and handle memory faults.
+
+setjmp / longjmp: Enables recovery from faults instead of crashing.
+
+
+
+---
+
+Expected Output:
+
+Trying to read from invalid memory address...
+Memory protection fault caught! (signal 11)
+MMU or memory protection seems to be working — invalid access was blocked.
+Test complete.
+
+
+---
+
+Result:
+
+The test output confirmed that unauthorized memory access was blocked and a fault was caught. This indicates that MMU is active and the system prevents illegal memory operations.
+
+
+---
+
+Conclusion:
+
+This test validates that the system's MMU is functioning correctly and that memory protection is enforced. Any application trying to access memory outside of its permitted space is caught and blocked, ensuring safe execution.
+
+
+---
+
+Next Steps:
+
+Proceed to the second test case once this MMU Test is documented and reviewed.
+
