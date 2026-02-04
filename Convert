@@ -1,0 +1,106 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define MAX_LINE 65536
+#define MAX_COLS 1024
+
+int split_csv(char *line, char *cols[], int max_cols) {
+    int count = 0;
+    char *p = strtok(line, ",\n\r");
+    while (p && count < max_cols) {
+        cols[count++] = p;
+        p = strtok(NULL, ",\n\r");
+    }
+    return count;
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 3) {
+        printf("Usage: %s input.csv output.csv\n", argv[0]);
+        return 1;
+    }
+
+    FILE *fin = fopen(argv[1], "r");
+    if (!fin) {
+        perror("Failed to open input file");
+        return 1;
+    }
+
+    FILE *fout = fopen(argv[2], "w");
+    if (!fout) {
+        perror("Failed to open output file");
+        fclose(fin);
+        return 1;
+    }
+
+    char line[MAX_LINE];
+    char *cols[MAX_COLS];
+
+    // Read header
+    if (!fgets(line, sizeof(line), fin)) {
+        printf("Empty input file\n");
+        fclose(fin);
+        fclose(fout);
+        return 1;
+    }
+
+    char header_copy[MAX_LINE];
+    strcpy(header_copy, line);
+
+    int ncols = split_csv(header_copy, cols, MAX_COLS);
+
+    // cols[0] = Frequency, cols[1] = Component, cols[2...] = P0, P1, ...
+    int pulse_cols = ncols - 2;
+
+    // Write output header
+    fprintf(fout, "%s", cols[0]); // Frequency
+    for (int i = 0; i < pulse_cols; i++) {
+        fprintf(fout, ",%s_I,%s_Q", cols[i + 2], cols[i + 2]);
+    }
+    fprintf(fout, "\n");
+
+    // Process rows: read two lines at a time (I and Q)
+    while (1) {
+        char lineI[MAX_LINE], lineQ[MAX_LINE];
+
+        if (!fgets(lineI, sizeof(lineI), fin))
+            break; // no more data
+        if (!fgets(lineQ, sizeof(lineQ), fin)) {
+            printf("Error: Unpaired I/Q row at end of file\n");
+            break;
+        }
+
+        char *colsI[MAX_COLS];
+        char *colsQ[MAX_COLS];
+
+        int nI = split_csv(lineI, colsI, MAX_COLS);
+        int nQ = split_csv(lineQ, colsQ, MAX_COLS);
+
+        if (nI != ncols || nQ != ncols) {
+            printf("Error: Column count mismatch\n");
+            break;
+        }
+
+        // Check frequency matches
+        if (strcmp(colsI[0], colsQ[0]) != 0) {
+            printf("Error: Frequency mismatch between I and Q rows: %s vs %s\n", colsI[0], colsQ[0]);
+            break;
+        }
+
+        // Write frequency
+        fprintf(fout, "%s", colsI[0]);
+
+        // Write P0_I, P0_Q, P1_I, P1_Q, ...
+        for (int i = 0; i < pulse_cols; i++) {
+            fprintf(fout, ",%s,%s", colsI[i + 2], colsQ[i + 2]);
+        }
+        fprintf(fout, "\n");
+    }
+
+    fclose(fin);
+    fclose(fout);
+
+    printf("Done. Output written to %s\n", argv[2]);
+    return 0;
+}
